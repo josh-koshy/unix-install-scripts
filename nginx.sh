@@ -1,5 +1,5 @@
 #!/bin/bash
-
+# Configures NGINX
 sudo ./configure --prefix=/usr/share/nginx \
 	--sbin-path=/usr/sbin/nginx \
 	--conf-path=/etc/nginx/nginx.conf \
@@ -44,3 +44,45 @@ sudo ./configure --prefix=/usr/share/nginx \
 	--with-http_v3_module \
 	--with-cc-opt='-g -O2 -flto=auto -ffat-lto-objects -flto=auto -ffat-lto-objects -fstack-protector-strong -Wformat -Werror=format-security -Wp,-D_FORTIFY_SOURCE=2 -fPIC -I../boringssl/include' \
 	--with-ld-opt='-Wl,-Bsymbolic-functions -flto=auto -ffat-lto-objects -flto=auto -Wl,-z,relro -Wl,-z,now -Wl,--as-needed -pie -L../boringssl/build/ssl -L../boringssl/build/crypto'
+
+# Make and Install
+sudo make
+sudo make install
+
+
+# Define the path for the NGINX systemd service file
+service_file="/etc/systemd/system/nginx.service"
+
+# Check if the service file already exists
+if [[ -f "$service_file" ]]; then
+  echo "Error: $service_file already exists."
+  exit 1
+fi
+
+# Create and write the NGINX service configuration to the file
+cat <<EOL | sudo tee "$service_file" > /dev/null
+[Unit]
+Description=nginx - high performance web server
+After=network-online.target remote-fs.target nss-lookup.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+PIDFile=/var/run/nginx.pid
+ExecStartPre=/usr/sbin/nginx -t -q -g 'daemon on; master_process on;'
+ExecStart=/usr/sbin/nginx -g 'daemon on; master_process on;'
+ExecReload=/usr/sbin/nginx -g 'daemon on; master_process on;' -s reload
+ExecStop=-/sbin/start-stop-daemon --quiet --stop --retry QUIT/5 --pidfile /var/run/nginx.pid
+TimeoutStopSec=5
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
+EOL
+
+
+sudo chmod 644 "$service_file"
+
+sudo systemctl daemon-reload
+
+echo "NGINX service file created and systemd reloaded."
